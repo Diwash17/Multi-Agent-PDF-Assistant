@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.api.routes import conversations, documents
+
 app = FastAPI(
     title="Multi-Agent PDF Assistant",
     description="Agentic PDF assistant — upload, chat, and edit PDFs via multiple specialized agents.",
@@ -15,6 +17,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers
+app.include_router(conversations.router)
+app.include_router(documents.router)
 
 
 @app.get("/health", tags=["Health"])
