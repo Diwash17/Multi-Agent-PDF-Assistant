@@ -87,14 +87,7 @@ class RAGAgent:
             # 4. Call Gemini
             answer_text = self._generate_answer(question, context, history)
 
-        # 5. Persist assistant message to DB
-        self._save_message(
-            conversation_id=conversation_id,
-            content=answer_text,
-            citations=citations,
-            db=db,
-        )
-
+        # 5. Return result — message persistence is handled by the API route
         return {"answer": answer_text, "citations": citations}
 
     # ──────────────────────────────────────────────────────────────────────────

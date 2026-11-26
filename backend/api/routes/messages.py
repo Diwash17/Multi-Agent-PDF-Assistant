@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.agents.orchestrator import build_orchestrator
-from backend.core.exceptions import LLMError
 from backend.core.state import GraphState
 from backend.db.models import Conversation, Document, Message
 from backend.db.session import get_db
@@ -87,11 +86,7 @@ def _build_state(
     )
     history = [{"role": m.role, "content": m.content} for m in reversed(recent)]
 
-    documents = (
-        db.query(Document)
-        .filter(Document.conversation_id == conversation_id)
-        .all()
-    )
+    documents = db.query(Document).filter(Document.conversation_id == conversation_id).all()
     doc_list = [{"id": str(d.id), "filename": d.filename} for d in documents]
 
     return GraphState(
@@ -118,19 +113,13 @@ def send_message(
     body: MessageCreate,
     db: Session = Depends(get_db),
 ) -> ChatResponse:
-    """Send a user message through the orchestrator and get an agent reply.
-
-    - Classifies intent (question / edit / upload) via Gemini
-    - Routes to RAGAgent or FileEditAgent accordingly
-    - Persists user + assistant messages in a single DB transaction
-    - Supports multi-turn: last 10 messages passed as history
-    """
+    """Send a user message through the orchestrator and get an agent reply."""
     # Verify conversation exists
     convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Persist user message first
+    # Persist user message
     user_msg = Message(
         conversation_id=conversation_id,
         role="user",
@@ -150,61 +139,39 @@ def send_message(
         logger.exception("Orchestrator invoke failed")
         raise HTTPException(status_code=500, detail=f"Orchestrator error: {exc}") from exc
 
-    # Handle orchestrator-level errors
     if final_state.get("error"):
         raise HTTPException(status_code=500, detail=final_state["error"])
 
-    # Build assistant reply content
+    # Build reply content — route owns ALL message persistence
     result = final_state.get("result", {})
     intent = final_state.get("intent", "question")
 
     if intent == "edit":
-        # For edits, the RAGAgent wasn't called — compose a reply from the edit result
-        edited_path = result.get("edited_path", "")
         filename = result.get("filename", "document")
         content = (
             f"Done! I've applied your edit to '{filename}'. "
-            f"You can download the edited version using the download endpoint."
+            "You can download the edited version using the download endpoint."
         )
         citations_json = None
     else:
-        # For questions, RAGAgent already saved the message — fetch it
         content = result.get("answer", "I could not generate a response.")
         raw_citations = result.get("citations", [])
         citations_json = json.dumps(raw_citations) if raw_citations else None
 
-    # For edit intent, the assistant message wasn't saved by any agent — save it now
-    if intent in ("edit", "upload"):
-        assistant_msg = Message(
-            conversation_id=conversation_id,
-            role="assistant",
-            content=content,
-            citations=citations_json,
-        )
-        db.add(assistant_msg)
-        db.commit()
-        db.refresh(assistant_msg)
-    else:
-        # RAGAgent already persisted the assistant message — fetch the latest one
-        assistant_msg = (
-            db.query(Message)
-            .filter(
-                Message.conversation_id == conversation_id,
-                Message.role == "assistant",
-            )
-            .order_by(Message.created_at.desc())
-            .first()
-        )
-        if not assistant_msg:
-            assistant_msg = Message(
-                conversation_id=conversation_id,
-                role="assistant",
-                content=content,
-                citations=citations_json,
-            )
-            db.add(assistant_msg)
-            db.commit()
-            db.refresh(assistant_msg)
+    assistant_msg = Message(
+        conversation_id=conversation_id,
+        role="assistant",
+        content=content,
+        citations=citations_json,
+    )
+    db.add(assistant_msg)
+    db.commit()
+    db.refresh(assistant_msg)
+
+    return ChatResponse(
+        user_message=_message_to_out(user_msg),
+        assistant_message=_message_to_out(assistant_msg),
+    )
 
 
 @router.get("/{conversation_id}/messages", response_model=list[MessageOut])
@@ -214,7 +181,7 @@ def get_messages(
 ) -> list[MessageOut]:
     """Return full message history (oldest → newest).
 
-    Messages are stored in PostgreSQL and survive server restarts.
+    Messages survive server restarts — stored in PostgreSQL.
     """
     convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not convo:
@@ -227,8 +194,3 @@ def get_messages(
         .all()
     )
     return [_message_to_out(m) for m in messages]
-
-    return ChatResponse(
-        user_message=_message_to_out(user_msg),
-        assistant_message=_message_to_out(assistant_msg),
-    )
