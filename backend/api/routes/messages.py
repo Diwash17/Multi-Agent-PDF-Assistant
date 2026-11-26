@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
@@ -14,6 +15,7 @@ from backend.db.models import Conversation, Document, Message
 from backend.db.session import get_db
 
 router = APIRouter(prefix="/conversations", tags=["Messages"])
+logger = logging.getLogger(__name__)
 
 HISTORY_WINDOW = 10
 
@@ -145,6 +147,7 @@ def send_message(
     try:
         final_state: GraphState = orchestrator.invoke(state)
     except Exception as exc:
+        logger.exception("Orchestrator invoke failed")
         raise HTTPException(status_code=500, detail=f"Orchestrator error: {exc}") from exc
 
     # Handle orchestrator-level errors
@@ -203,11 +206,6 @@ def send_message(
             db.commit()
             db.refresh(assistant_msg)
 
-    return ChatResponse(
-        user_message=_message_to_out(user_msg),
-        assistant_message=_message_to_out(assistant_msg),
-    )
-
 
 @router.get("/{conversation_id}/messages", response_model=list[MessageOut])
 def get_messages(
@@ -229,3 +227,8 @@ def get_messages(
         .all()
     )
     return [_message_to_out(m) for m in messages]
+
+    return ChatResponse(
+        user_message=_message_to_out(user_msg),
+        assistant_message=_message_to_out(assistant_msg),
+    )

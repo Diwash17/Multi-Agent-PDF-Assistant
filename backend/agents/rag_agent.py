@@ -41,7 +41,6 @@ class RAGAgent:
         self.llm = ChatGoogleGenerativeAI(
             model=settings.gemini_chat_model,
             google_api_key=settings.gemini_api_key,
-            temperature=0.2,
         )
         self.prompt = ChatPromptTemplate.from_messages(
             [

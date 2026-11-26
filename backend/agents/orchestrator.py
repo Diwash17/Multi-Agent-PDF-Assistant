@@ -31,7 +31,6 @@ def classify_intent(state: GraphState) -> GraphState:
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_chat_model,
         google_api_key=settings.gemini_api_key,
-        temperature=0,
     )
     try:
         response = llm.invoke(

@@ -40,7 +40,6 @@ class FileEditAgent:
         self.llm = ChatGoogleGenerativeAI(
             model=settings.gemini_chat_model,
             google_api_key=settings.gemini_api_key,
-            temperature=0,
         )
         os.makedirs(settings.storage_edited_dir, exist_ok=True)
 
