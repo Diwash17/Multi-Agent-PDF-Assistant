@@ -558,25 +558,33 @@ def render_edit():
                 json={"content": instruction, "document_id": selected_id},
             )
         if result:
-            reply = result["assistant_message"]["content"]
-            st.success(reply)
+            st.success(result["assistant_message"]["content"])
             st.session_state.active_step = 3
             refresh_documents()
+            # Don't rerun — keep success message + download button visible
 
-            # Offer download
+    # ── Always show download for ANY edited document ──────────────────────────
+    st.divider()
+    st.markdown('<div class="section-header">📥 Edited Documents</div>', unsafe_allow_html=True)
+
+    edited_docs = [d for d in st.session_state.documents if d.get("edited_path")]
+    if edited_docs:
+        for doc in edited_docs:
+            st.markdown(f"**📄 {doc['filename']}** ✏️")
             pdf_bytes = api_bytes(
-                f"/conversations/{st.session_state.conversation_id}/documents/{selected_id}/download-edited"
+                f"/conversations/{st.session_state.conversation_id}/documents/{doc['id']}/download-edited"
             )
             if pdf_bytes:
                 st.download_button(
-                    "📥 Download edited PDF",
+                    f"📥 Download edited_{doc['filename']}",
                     data=pdf_bytes,
-                    file_name=f"edited_{selected_name}",
+                    file_name=f"edited_{doc['filename']}",
                     mime="application/pdf",
                     use_container_width=True,
-                    type="primary",
+                    key=f"edit_dl_{doc['id']}",
                 )
-            st.rerun()
+    else:
+        st.caption("No edited documents yet. Apply an edit above.")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
