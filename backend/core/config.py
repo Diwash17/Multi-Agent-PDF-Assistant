@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,7 +31,7 @@ class Settings(BaseSettings):
     storage_edited_dir: str = "backend/storage/edited"
 
     # ── LLM model names ───────────────────────────────────────────────────────
-    gemini_chat_model: str = "gemini-2.5-flash"
+    gemini_chat_model: str = "gemini-3.5-flash-lite"
     gemini_embedding_model: str = "gemini-embedding-001"
 
 
@@ -42,3 +43,22 @@ def get_settings() -> Settings:
 
 # Module-level singleton for convenience
 settings = get_settings()
+
+
+def extract_llm_text(content: Any) -> str:
+    """Extract plain text from LLM response content.
+
+    Handles both old-style string responses and new-style structured
+    list responses from the google-genai SDK (Gemini 3.x+).
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                parts.append(item.get("text", ""))
+            elif isinstance(item, str):
+                parts.append(item)
+        return "".join(parts)
+    return str(content)

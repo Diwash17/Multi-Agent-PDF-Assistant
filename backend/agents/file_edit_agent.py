@@ -7,7 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from backend.core.config import settings
+from backend.core.config import settings, extract_llm_text
 from backend.core.exceptions import DocumentNotFoundError, EditParseError, LLMError
 from backend.db.models import Document
 
@@ -100,7 +100,7 @@ class FileEditAgent:
         """Call Gemini to parse instruction into a structured EditCommand dict."""
         try:
             response = self.llm.invoke(PARSE_PROMPT.format(instruction=instruction))
-            raw = response.content.strip()
+            raw = extract_llm_text(response.content).strip()
 
             # Strip markdown code fences if Gemini wraps it
             if raw.startswith("```"):

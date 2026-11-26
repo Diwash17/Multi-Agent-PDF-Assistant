@@ -7,7 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.agents.file_edit_agent import FileEditAgent
 from backend.agents.rag_agent import RAGAgent
-from backend.core.config import settings
+from backend.core.config import settings, extract_llm_text
 from backend.core.exceptions import EditParseError, LLMError
 from backend.core.state import GraphState
 
@@ -37,7 +37,7 @@ def classify_intent(state: GraphState) -> GraphState:
         response = llm.invoke(
             CLASSIFIER_PROMPT.format(message=state["message"])
         )
-        intent = response.content.strip().lower()
+        intent = extract_llm_text(response.content).strip().lower()
         # Normalise — keep only valid values
         if intent not in ("question", "edit", "upload"):
             intent = "question"  # default to RAG if unsure

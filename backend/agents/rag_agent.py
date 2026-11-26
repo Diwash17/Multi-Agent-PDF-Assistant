@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from backend.core.config import settings
+from backend.core.config import settings, extract_llm_text
 from backend.core.exceptions import LLMError
 from backend.db.models import Document, DocumentChunk, Message
 
@@ -152,7 +152,7 @@ class RAGAgent:
         try:
             chain = self.prompt | self.llm
             response = chain.invoke({"context": context, "question": question})
-            return response.content
+            return extract_llm_text(response.content)
         except Exception as exc:
             raise LLMError(f"Gemini call failed: {exc}") from exc
 
