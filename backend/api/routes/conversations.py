@@ -56,3 +56,16 @@ def get_conversation(
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return convo
+
+
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(
+    conversation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete a conversation and all its messages and documents (cascade)."""
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    db.delete(convo)
+    db.commit()
