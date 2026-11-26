@@ -1,0 +1,38 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+
+# Storage (uploaded and edited PDFs — not committed)
+backend/storage/originals/*.pdf
+backend/storage/edited/*.pdf
+
+# uv
+.uv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic
+alembic/versions/*.pyc
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
