@@ -7,8 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.agents.upload_agent import UploadAgent
+from backend.agents.file_edit_agent import FileEditAgent
 from backend.core.config import settings
-from backend.core.exceptions import InvalidPDFError
+from backend.core.exceptions import InvalidPDFError, DocumentNotFoundError, EditParseError
 from backend.db.models import Conversation, Document
 from backend.db.session import get_db
 
@@ -128,3 +129,54 @@ def download_edited_document(
         media_type="application/pdf",
         filename=f"edited_{doc.filename}",
     )
+
+
+# ── Edit endpoint ─────────────────────────────────────────────────────────────
+
+class EditRequest(BaseModel):
+    instruction: str
+
+
+@router.post("/{conversation_id}/documents/{document_id}/edit", response_model=DocumentOut)
+def edit_document(
+    conversation_id: uuid.UUID,
+    document_id: uuid.UUID,
+    body: EditRequest,
+    db: Session = Depends(get_db),
+) -> Document:
+    """Apply a natural-language edit instruction to a PDF document.
+
+    Supported operations (auto-detected from instruction):
+    - Replace text: "Replace 'Confidential' with 'Public'"
+    - Redact text:  "Redact all phone numbers" / "Black out 'John Doe'"
+    - Remove pages: "Remove page 3" / "Delete pages 1 and 5"
+
+    Original file is never modified. Edited copy saved to storage/edited/.
+    """
+    # Verify conversation + document belong together
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.conversation_id == conversation_id,
+        )
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        agent = FileEditAgent()
+        updated_doc = agent.edit(
+            instruction=body.instruction,
+            document_id=str(document_id),
+            db=db,
+        )
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except EditParseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Edit failed: {exc}") from exc
+
+    return updated_doc
