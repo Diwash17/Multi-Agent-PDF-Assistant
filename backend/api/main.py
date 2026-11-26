@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import conversations, documents
+from backend.api.routes import conversations, documents, messages
 
 app = FastAPI(
     title="Multi-Agent PDF Assistant",
@@ -21,6 +21,7 @@ app.add_middleware(
 # Register routers
 app.include_router(conversations.router)
 app.include_router(documents.router)
+app.include_router(messages.router)
 
 
 @app.get("/health", tags=["Health"])
