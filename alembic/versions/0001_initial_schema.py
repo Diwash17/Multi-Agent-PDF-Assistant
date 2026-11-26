@@ -110,7 +110,7 @@ def upgrade() -> None:
         ),
         sa.Column("page_number", sa.Integer, nullable=False),
         sa.Column("chunk_text", sa.Text, nullable=False),
-        sa.Column("embedding", Vector(768), nullable=True),
+        sa.Column("embedding", Vector(3072), nullable=True),
     )
     op.create_index("ix_document_chunks_document_id", "document_chunks", ["document_id"])
 

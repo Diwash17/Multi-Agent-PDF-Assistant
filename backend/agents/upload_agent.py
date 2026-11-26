@@ -1,8 +1,8 @@
 import os
 import uuid
 
-import fitz  # PyMuPDF
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+import pymupdf as fitz  # PyMuPDF (use pymupdf import to avoid deprecation warning)
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy.orm import Session
 

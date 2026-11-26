@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from sqlalchemy import select
 from sqlalchemy.orm import Session

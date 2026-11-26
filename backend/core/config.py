@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
 
     # ── Database ──────────────────────────────────────────────────────────────
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/pdf_assistant"
+    database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5433/pdf_assistant"
 
     # ── Google Gemini ─────────────────────────────────────────────────────────
     gemini_api_key: str = ""
@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     storage_edited_dir: str = "backend/storage/edited"
 
     # ── LLM model names ───────────────────────────────────────────────────────
-    gemini_chat_model: str = "gemini-1.5-flash"
-    gemini_embedding_model: str = "models/embedding-001"
+    gemini_chat_model: str = "gemini-2.5-flash"
+    gemini_embedding_model: str = "gemini-embedding-001"
 
 
 @lru_cache

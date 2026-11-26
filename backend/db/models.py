@@ -125,7 +125,7 @@ class DocumentChunk(Base):
     )
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(Vector(768), nullable=True)
+    embedding: Mapped[list[float]] = mapped_column(Vector(3072), nullable=True)
 
     # Relationships
     document: Mapped["Document"] = relationship("Document", back_populates="chunks")
