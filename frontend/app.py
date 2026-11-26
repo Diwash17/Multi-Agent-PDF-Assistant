@@ -19,40 +19,186 @@ st.set_page_config(
 DARK_CSS = """
 <style>
 :root {
-    --bg: #0e1117;
-    --sidebar-bg: #161b22;
-    --card: #1c2130;
-    --border: #30363d;
-    --text: #e6edf3;
-    --text-muted: #8b949e;
-    --accent: #58a6ff;
-    --accent-hover: #79b8ff;
-    --user-bubble: #1f3a5f;
-    --assistant-bubble: #1c2130;
-    --success: #2ea043;
-    --danger: #da3633;
-    --badge: #21262d;
+    --bg: #0f172a;
+    --sidebar-bg: #1e293b;
+    --card: #1e293b;
+    --border: #334155;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --accent: #818cf8;
+    --accent-hover: #6366f1;
+    --user-bubble: #312e81;
+    --assistant-bubble: #1e293b;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --badge: #334155;
 }
+
+[data-testid="stApp"] {
+    background-color: #0f172a !important;
+    color: #f1f5f9 !important;
+}
+[data-testid="stSidebar"] {
+    background-color: #1e293b !important;
+    border-right: 1px solid #334155 !important;
+}
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea {
+    background-color: #0f172a !important;
+    color: #f1f5f9 !important;
+    border: 1px solid #334155 !important;
+    border-radius: 8px !important;
+}
+[data-testid="stFileUploader"] {
+    background-color: #1e293b !important;
+    border: 2px dashed #818cf8 !important;
+    border-radius: 10px !important;
+}
+[data-testid="stFileUploader"] label,
+[data-testid="stFileUploader"] span {
+    color: #f1f5f9 !important;
+}
+[data-testid="stButton"] button {
+    background-color: #6366f1 !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+}
+[data-testid="stSelectbox"] > div {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    color: #f1f5f9 !important;
+    border-radius: 8px !important;
+}
+[data-testid="stTabs"] [role="tab"] { color: #94a3b8 !important; }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+    color: #818cf8 !important;
+    border-bottom-color: #818cf8 !important;
+}
+[data-testid="stExpander"] {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 8px !important;
+}
+[data-testid="stAlert"] {
+    background-color: #1e1b4b !important;
+    color: #c7d2fe !important;
+    border-left: 4px solid #818cf8 !important;
+    border-radius: 8px !important;
+}
+[data-testid="stDownloadButton"] button {
+    background-color: #6366f1 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    border: none !important;
+}
+hr { border-color: #334155 !important; }
+p, label, span { color: #f1f5f9; }
 </style>
 """
 
 LIGHT_CSS = """
 <style>
 :root {
-    --bg: #ffffff;
-    --sidebar-bg: #f6f8fa;
-    --card: #f0f2f5;
-    --border: #d0d7de;
-    --text: #24292f;
-    --text-muted: #57606a;
-    --accent: #0969da;
-    --accent-hover: #0550ae;
-    --user-bubble: #dbeafe;
-    --assistant-bubble: #f0f2f5;
-    --success: #1a7f37;
-    --danger: #cf222e;
-    --badge: #eaeef2;
+    --bg: #f8fafc;
+    --sidebar-bg: #ffffff;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --accent: #6366f1;
+    --accent-hover: #4f46e5;
+    --user-bubble: #ede9fe;
+    --assistant-bubble: #f1f5f9;
+    --success: #16a34a;
+    --danger: #dc2626;
+    --badge: #f1f5f9;
 }
+
+/* Force Streamlit native components to light theme */
+[data-testid="stApp"] {
+    background-color: #f8fafc !important;
+    color: #1e293b !important;
+}
+[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    border-right: 1px solid #e2e8f0 !important;
+}
+/* Text inputs */
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+}
+/* File uploader */
+[data-testid="stFileUploader"] {
+    background-color: #ffffff !important;
+    border: 2px dashed #6366f1 !important;
+    border-radius: 10px !important;
+    color: #1e293b !important;
+}
+[data-testid="stFileUploader"] label,
+[data-testid="stFileUploader"] span {
+    color: #1e293b !important;
+}
+/* Buttons */
+[data-testid="stButton"] button {
+    background-color: #6366f1 !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+}
+[data-testid="stButton"] button:hover {
+    background-color: #4f46e5 !important;
+}
+/* Primary buttons */
+[data-testid="stFormSubmitButton"] button[kind="primary"],
+[data-testid="stButton"] button[kind="primary"] {
+    background-color: #6366f1 !important;
+    color: #ffffff !important;
+}
+/* Select box */
+[data-testid="stSelectbox"] > div {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #1e293b !important;
+    border-radius: 8px !important;
+}
+/* Tabs */
+[data-testid="stTabs"] [role="tab"] {
+    color: #64748b !important;
+}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+    color: #6366f1 !important;
+    border-bottom-color: #6366f1 !important;
+}
+/* Expander */
+[data-testid="stExpander"] {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+}
+/* Info box */
+[data-testid="stAlert"] {
+    background-color: #ede9fe !important;
+    color: #3730a3 !important;
+    border-left: 4px solid #6366f1 !important;
+    border-radius: 8px !important;
+}
+/* Download button */
+[data-testid="stDownloadButton"] button {
+    background-color: #6366f1 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    border: none !important;
+}
+/* Divider */
+hr { border-color: #e2e8f0 !important; }
+/* General text */
+p, label, span, div { color: #1e293b; }
+.stMarkdown { color: #1e293b !important; }
 </style>
 """
 
