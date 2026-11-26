@@ -24,9 +24,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app/backend
-      - ./alembic:/app/alembic
-      - ./alembic.ini:/app/alembic.ini
+      # Persist uploaded/edited PDFs across container restarts
+      - pdf_storage:/app/backend/storage
     env_file:
       - .env
     depends_on:
@@ -51,3 +50,4 @@ services:
 
 volumes:
   postgres_data:
+  pdf_storage:
