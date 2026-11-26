@@ -47,4 +47,4 @@ RUN mkdir -p backend/storage/originals backend/storage/edited
 EXPOSE 8000
 
 # Run migrations then start server
-CMD alembic upgrade head && uvicorn backend.api.main:app --host 0.0.0.0 --port 8000
+CMD ["/bin/sh", "-c", "alembic upgrade head && uvicorn backend.api.main:app --host 0.0.0.0 --port 8000"]
