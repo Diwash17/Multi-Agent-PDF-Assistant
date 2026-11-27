@@ -162,8 +162,11 @@ class FileEditAgent:
     def _do_replace(self, pdf: pymupdf.Document, target: str, replacement: str) -> int:
         """Replace all occurrences of target text with replacement on every page.
 
-        Uses redact-then-insert so original text is physically removed from
-        the PDF stream. Rects are stored before redaction is applied.
+        Strategy:
+        1. Find all rects for target text
+        2. Expand each rect slightly to ensure full glyph coverage
+        3. Redact with white fill (physically removes original text)
+        4. Insert replacement at stored baseline position
         """
         total_found = 0
         for page in pdf:
@@ -172,24 +175,31 @@ class FileEditAgent:
                 continue
             total_found += len(instances)
 
-            # Store (rect, fontsize, baseline_y) BEFORE applying redactions
-            insert_positions = []
+            inserts = []
             for rect in instances:
-                fontsize = max(7.0, round(rect.height * 0.80, 1))
-                baseline_y = rect.y0 + rect.height * 0.80
-                insert_positions.append((rect.x0, baseline_y, fontsize))
-                page.add_redact_annot(rect, fill=(1, 1, 1))
+                fontsize = max(6.0, round(rect.height * 0.72, 1))
+                baseline_y = rect.y1 - rect.height * 0.18
+                x0 = rect.x0
 
-            # Apply redactions (physically removes original text)
+                # Expand rect by 1pt on all sides to catch full glyphs
+                expanded = pymupdf.Rect(
+                    rect.x0 - 1,
+                    rect.y0 - 1,
+                    rect.x1 + 1,
+                    rect.y1 + 1,
+                )
+                page.add_redact_annot(expanded, fill=(1, 1, 1))
+                inserts.append((x0, baseline_y, fontsize))
+
             page.apply_redactions()
 
-            # Insert replacement at stored positions
-            for x0, baseline_y, fontsize in insert_positions:
+            for x0, baseline_y, fontsize in inserts:
                 page.insert_text(
                     pymupdf.Point(x0, baseline_y),
                     replacement,
                     fontsize=fontsize,
                     color=(0, 0, 0),
+                    overlay=True,
                 )
 
         if total_found == 0:
