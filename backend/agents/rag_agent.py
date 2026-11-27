@@ -25,29 +25,59 @@ Context:
 {context}
 """
 
+# ── Module-level singletons — created once per process, reused across requests ─
+_embeddings: GoogleGenerativeAIEmbeddings | None = None
+_llm: ChatGoogleGenerativeAI | None = None
+_prompt: ChatPromptTemplate | None = None
+
+
+def _get_embeddings() -> GoogleGenerativeAIEmbeddings:
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = GoogleGenerativeAIEmbeddings(
+            model=settings.gemini_embedding_model,
+            google_api_key=settings.gemini_api_key,
+        )
+    return _embeddings
+
+
+def _get_llm() -> ChatGoogleGenerativeAI:
+    global _llm
+    if _llm is None:
+        _llm = ChatGoogleGenerativeAI(
+            model=settings.gemini_chat_model,
+            google_api_key=settings.gemini_api_key,
+        )
+    return _llm
+
+
+def _get_prompt() -> ChatPromptTemplate:
+    global _prompt
+    if _prompt is None:
+        _prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", SYSTEM_PROMPT),
+                ("human", "{question}"),
+            ]
+        )
+    return _prompt
+
 
 class RAGAgent:
     """Retrieval-Augmented Generation agent.
 
     Embeds the user question → retrieves top-K chunks from pgvector →
     builds a cited prompt → calls Gemini → returns answer + citations.
+
+    LLM and embedding clients are module-level singletons — instantiated
+    once per process and reused across all requests.
     """
 
     def __init__(self) -> None:
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model=settings.gemini_embedding_model,
-            google_api_key=settings.gemini_api_key,
-        )
-        self.llm = ChatGoogleGenerativeAI(
-            model=settings.gemini_chat_model,
-            google_api_key=settings.gemini_api_key,
-        )
-        self.prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", SYSTEM_PROMPT),
-                ("human", "{question}"),
-            ]
-        )
+        # Use module-level singletons — no new API client per request
+        self.embeddings = _get_embeddings()
+        self.llm = _get_llm()
+        self.prompt = _get_prompt()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public API
@@ -147,24 +177,3 @@ class RAGAgent:
             return extract_llm_text(response.content)
         except Exception as exc:
             raise LLMError(f"Gemini call failed: {exc}") from exc
-
-    def _save_message(
-        self,
-        conversation_id: str,
-        content: str,
-        citations: list[dict],
-        db: Session,
-    ) -> Message:
-        """Persist the assistant reply as a Message row."""
-        import json
-
-        msg = Message(
-            conversation_id=uuid.UUID(conversation_id),
-            role="assistant",
-            content=content,
-            citations=json.dumps(citations) if citations else None,
-        )
-        db.add(msg)
-        db.commit()
-        db.refresh(msg)
-        return msg

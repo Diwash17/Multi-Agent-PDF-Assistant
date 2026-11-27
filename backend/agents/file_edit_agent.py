@@ -11,6 +11,19 @@ from backend.core.config import settings, extract_llm_text
 from backend.core.exceptions import DocumentNotFoundError, EditParseError, LLMError
 from backend.db.models import Document
 
+# ── Module-level singleton ────────────────────────────────────────────────────
+_llm: ChatGoogleGenerativeAI | None = None
+
+
+def _get_llm() -> ChatGoogleGenerativeAI:
+    global _llm
+    if _llm is None:
+        _llm = ChatGoogleGenerativeAI(
+            model=settings.gemini_chat_model,
+            google_api_key=settings.gemini_api_key,
+        )
+    return _llm
+
 # ── Gemini prompt to parse a natural-language instruction ─────────────────────
 PARSE_PROMPT = """You are a PDF editing assistant. Parse the user's instruction into a structured edit command.
 
@@ -37,10 +50,8 @@ class FileEditAgent:
     """
 
     def __init__(self) -> None:
-        self.llm = ChatGoogleGenerativeAI(
-            model=settings.gemini_chat_model,
-            google_api_key=settings.gemini_api_key,
-        )
+        # Reuse module-level singleton — no new API client per request
+        self.llm = _get_llm()
         os.makedirs(settings.storage_edited_dir, exist_ok=True)
 
     # ──────────────────────────────────────────────────────────────────────────

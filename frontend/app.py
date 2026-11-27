@@ -327,7 +327,8 @@ html, body, [data-testid="stApp"] {
 
 # ── API helpers ───────────────────────────────────────────────────────────────
 
-def api(method: str, path: str, **kwargs):
+def api(method: str, path: str, **kwargs) -> dict | list | None:
+    """Make a JSON API call and return the parsed response, or None on error."""
     url = f"{BACKEND_URL}{path}"
     try:
         resp = httpx.request(method, url, timeout=120, **kwargs)
@@ -348,8 +349,8 @@ def api(method: str, path: str, **kwargs):
         return None
 
 
-def api_bytes(path: str):
-    """Download binary (PDF) response."""
+def api_bytes(path: str) -> bytes | None:
+    """Download a binary (PDF) response, returning raw bytes or None on error."""
     try:
         resp = httpx.get(f"{BACKEND_URL}{path}", timeout=30)
         if resp.status_code == 200:
@@ -361,7 +362,8 @@ def api_bytes(path: str):
 
 # ── Session state ─────────────────────────────────────────────────────────────
 
-def init_state():
+def init_state() -> None:
+    """Initialise Streamlit session state with default values on first load."""
     defaults = {
         "conversation_id": None,
         "conversation_title": None,
@@ -375,16 +377,16 @@ def init_state():
             st.session_state[k] = v
 
 
-def refresh_messages():
-    if not st.session_state.conversation_id:
+def refresh_messages() -> None:
+    """Fetch latest messages from API and update session state."""
         return
     data = api("GET", f"/conversations/{st.session_state.conversation_id}/messages")
     if data is not None:
         st.session_state.messages = data
 
 
-def refresh_documents():
-    if not st.session_state.conversation_id:
+def refresh_documents() -> None:
+    """Fetch latest documents from API and update session state."""
         return
     data = api("GET", f"/conversations/{st.session_state.conversation_id}/documents")
     if data is not None:
@@ -393,7 +395,7 @@ def refresh_documents():
             st.session_state.active_step = max(st.session_state.active_step, 2)
 
 
-def select_conversation(conv_id: str, conv_title: str):
+def select_conversation(conv_id: str, conv_title: str) -> None:
     st.session_state.conversation_id = conv_id
     st.session_state.conversation_title = conv_title
     st.session_state.messages = []
@@ -405,7 +407,7 @@ def select_conversation(conv_id: str, conv_title: str):
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
-def render_sidebar():
+def render_sidebar() -> None:
     with st.sidebar:
         # Theme toggle
         col1, col2 = st.columns([3, 1])
@@ -469,7 +471,7 @@ def render_sidebar():
 
 # ── Step banner ───────────────────────────────────────────────────────────────
 
-def render_step_banner():
+def render_step_banner() -> None:
     step = st.session_state.active_step
     s1 = "active" if step == 1 else ""
     s2 = "active" if step == 2 else ""
@@ -488,7 +490,7 @@ def render_step_banner():
 
 # ── Main area ─────────────────────────────────────────────────────────────────
 
-def render_main():
+def render_main() -> None:
     if not st.session_state.conversation_id:
         st.markdown(
             """<div class="empty-state">
@@ -520,7 +522,7 @@ def render_main():
 
 # ── Upload tab ────────────────────────────────────────────────────────────────
 
-def render_upload():
+def render_upload() -> None:
     st.markdown('<div class="section-header">Upload PDF Documents</div>', unsafe_allow_html=True)
 
     col_info, _ = st.columns([3, 1])
@@ -589,8 +591,17 @@ def render_upload():
 
 # ── Chat tab ──────────────────────────────────────────────────────────────────
 
-def render_chat():
+def render_chat() -> None:
     if not st.session_state.documents:
+        st.markdown(
+            """<div class="empty-state">
+                <div class="icon">📤</div>
+                <h3>Upload a PDF first</h3>
+                <p>Go to the <strong>Upload PDF</strong> tab and index a document before chatting.</p>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        return
         st.markdown(
             """<div class="empty-state">
                 <div class="icon">📤</div>
@@ -655,7 +666,7 @@ def render_chat():
 
 # ── Edit tab ──────────────────────────────────────────────────────────────────
 
-def render_edit():
+def render_edit() -> None:
     if not st.session_state.documents:
         st.markdown(
             """<div class="empty-state">

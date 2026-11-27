@@ -22,6 +22,19 @@ from backend.core.config import settings, extract_llm_text
 from backend.core.exceptions import EditParseError, InvalidPDFError, LLMError
 from backend.core.state import GraphState
 
+# ── Module-level singleton ────────────────────────────────────────────────────
+_classifier_llm: ChatGoogleGenerativeAI | None = None
+
+
+def _get_classifier_llm() -> ChatGoogleGenerativeAI:
+    global _classifier_llm
+    if _classifier_llm is None:
+        _classifier_llm = ChatGoogleGenerativeAI(
+            model=settings.gemini_chat_model,
+            google_api_key=settings.gemini_api_key,
+        )
+    return _classifier_llm
+
 # ── Intent classifier prompt ──────────────────────────────────────────────────
 CLASSIFIER_PROMPT = """You are a routing assistant. Classify the user message into exactly one category.
 
@@ -52,10 +65,7 @@ def route_from_entry(state: GraphState) -> str:
 
 def classify_intent(state: GraphState) -> GraphState:
     """Call Gemini to classify the message intent (only for chat messages)."""
-    llm = ChatGoogleGenerativeAI(
-        model=settings.gemini_chat_model,
-        google_api_key=settings.gemini_api_key,
-    )
+    llm = _get_classifier_llm()  # reuse singleton — no new client per request
     try:
         response = llm.invoke(
             CLASSIFIER_PROMPT.format(message=state["message"])

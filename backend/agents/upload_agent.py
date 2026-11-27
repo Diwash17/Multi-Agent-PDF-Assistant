@@ -10,20 +10,41 @@ from backend.core.config import settings
 from backend.core.exceptions import InvalidPDFError
 from backend.db.models import Document, DocumentChunk
 
+# ── Module-level singletons ───────────────────────────────────────────────────
+_embeddings: GoogleGenerativeAIEmbeddings | None = None
+_splitter: RecursiveCharacterTextSplitter | None = None
 
-class UploadAgent:
-    """Handles PDF ingestion: validate → extract → chunk → embed → store."""
 
-    def __init__(self) -> None:
-        self.embeddings = GoogleGenerativeAIEmbeddings(
+def _get_embeddings() -> GoogleGenerativeAIEmbeddings:
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = GoogleGenerativeAIEmbeddings(
             model=settings.gemini_embedding_model,
             google_api_key=settings.gemini_api_key,
         )
-        self.splitter = RecursiveCharacterTextSplitter(
+    return _embeddings
+
+
+def _get_splitter() -> RecursiveCharacterTextSplitter:
+    global _splitter
+    if _splitter is None:
+        _splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50,
             separators=["\n\n", "\n", ".", " ", ""],
         )
+    return _splitter
+
+
+class UploadAgent:
+    """Handles PDF ingestion: validate → extract → chunk → embed → store.
+
+    LLM clients are module-level singletons — instantiated once per process.
+    """
+
+    def __init__(self) -> None:
+        self.embeddings = _get_embeddings()
+        self.splitter = _get_splitter()
         os.makedirs(settings.storage_originals_dir, exist_ok=True)
 
     # ──────────────────────────────────────────────────────────────────────────
