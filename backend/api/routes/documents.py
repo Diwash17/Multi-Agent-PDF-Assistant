@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime
 
@@ -6,10 +7,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.agents.upload_agent import UploadAgent
 from backend.agents.file_edit_agent import FileEditAgent
+from backend.agents.orchestrator import build_orchestrator
 from backend.core.config import settings
 from backend.core.exceptions import InvalidPDFError, DocumentNotFoundError, EditParseError
+from backend.core.state import GraphState
 from backend.db.models import Conversation, Document
 from backend.db.session import get_db
 
@@ -41,24 +43,26 @@ async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> Document:
-    """Upload a PDF to a conversation and index it for RAG retrieval."""
-    # Verify conversation exists
+    """Upload a PDF to a conversation and index it via the orchestrator.
+
+    Flow:
+      1. Validate file (mime type, size) — API layer
+      2. Save raw bytes to storage/originals/ as a temp file
+      3. Invoke orchestrator with intent="upload" (skips LLM classifier)
+      4. Orchestrator routes to UploadAgent node → extract → chunk → embed → pgvector
+      5. Return created Document metadata
+    """
+    # 1. Verify conversation exists
     convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Validate MIME type
-    if file.content_type not in ("application/pdf", "application/octet-stream"):
-        # Also allow octet-stream since some clients don't set content-type correctly;
-        # UploadAgent will reject it via fitz if it's not actually a PDF.
-        pass
+    # 2. Validate file type and size
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=422,
             detail="Only PDF files are accepted. Please upload a .pdf file.",
         )
-
-    # Validate file size
     file_bytes = await file.read()
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
     if len(file_bytes) > max_bytes:
@@ -67,17 +71,57 @@ async def upload_document(
             detail=f"File too large. Maximum allowed size is {settings.max_upload_size_mb} MB.",
         )
 
-    # Ingest via UploadAgent
+    # 3. Save bytes to a temp path so the upload node can read it
+    #    (LangGraph state is a plain dict — no binary bytes)
+    os.makedirs(settings.storage_originals_dir, exist_ok=True)
+    temp_id = uuid.uuid4()
+    temp_path = os.path.join(settings.storage_originals_dir, f"tmp_{temp_id}.pdf")
+    with open(temp_path, "wb") as f_out:
+        f_out.write(file_bytes)
+
+    # 4. Build state with intent="upload" — orchestrator skips classifier
+    state = GraphState(
+        conversation_id=str(conversation_id),
+        message="",
+        history=[],
+        documents=[],
+        intent="upload",          # pre-set: jumps directly to upload node
+        document_id=None,
+        file_path=temp_path,      # upload node reads from here
+        filename=file.filename,
+        result={},
+        error=None,
+    )
+
+    # 5. Invoke orchestrator — routes to run_upload → UploadAgent
     try:
-        agent = UploadAgent()
-        document = agent.ingest(
-            file_bytes=file_bytes,
-            filename=file.filename,
-            conversation_id=str(conversation_id),
-            db=db,
-        )
-    except InvalidPDFError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        orchestrator = build_orchestrator(db)
+        final_state: GraphState = orchestrator.invoke(state)
+    except Exception as exc:
+        # Clean up temp file on failure
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+
+    # Clean up temp file (UploadAgent saves its own copy with the real doc UUID)
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+
+    if final_state.get("error"):
+        error = final_state["error"]
+        if "not a valid" in error.lower() or "invalid" in error.lower():
+            raise HTTPException(status_code=400, detail=error)
+        raise HTTPException(status_code=500, detail=error)
+
+    # 6. Fetch and return the created Document from DB
+    result = final_state.get("result", {})
+    document_id = result.get("document_id")
+    if not document_id:
+        raise HTTPException(status_code=500, detail="Upload succeeded but document ID not returned.")
+
+    document = db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
+    if not document:
+        raise HTTPException(status_code=500, detail="Document created but not found in DB.")
 
     return document
 

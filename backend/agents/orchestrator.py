@@ -1,14 +1,25 @@
-"""LangGraph orchestrator — classifies intent and routes to the right agent."""
+"""LangGraph orchestrator — classifies intent and routes to the right agent.
+
+Flow for chat messages (POST /messages):
+    entry → classify_intent → [question | edit | upload] → END
+
+Flow for file uploads (POST /documents):
+    entry → route_from_entry  (intent already set to "upload", skip classifier)
+          → upload → END
+
+The classifier is only called when intent is not pre-set, keeping Gemini calls
+to the minimum necessary.
+"""
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, StateGraph
 from sqlalchemy.orm import Session
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.agents.file_edit_agent import FileEditAgent
 from backend.agents.rag_agent import RAGAgent
+from backend.agents.upload_agent import UploadAgent
 from backend.core.config import settings, extract_llm_text
-from backend.core.exceptions import EditParseError, LLMError
+from backend.core.exceptions import EditParseError, InvalidPDFError, LLMError
 from backend.core.state import GraphState
 
 # ── Intent classifier prompt ──────────────────────────────────────────────────
@@ -26,8 +37,21 @@ User message: {message}"""
 
 # ── Node functions ────────────────────────────────────────────────────────────
 
+def route_from_entry(state: GraphState) -> str:
+    """Entry-point router.
+
+    If intent is already set (e.g. upload endpoint pre-sets it to 'upload'),
+    skip the LLM classifier and jump straight to the right agent node.
+    Otherwise go to classify_intent.
+    """
+    intent = state.get("intent", "")
+    if intent in ("question", "edit", "upload"):
+        return intent  # skip classifier — go directly to agent node
+    return "classify"  # run LLM classifier
+
+
 def classify_intent(state: GraphState) -> GraphState:
-    """Call Gemini to classify the message intent."""
+    """Call Gemini to classify the message intent (only for chat messages)."""
     llm = ChatGoogleGenerativeAI(
         model=settings.gemini_chat_model,
         google_api_key=settings.gemini_api_key,
@@ -37,17 +61,59 @@ def classify_intent(state: GraphState) -> GraphState:
             CLASSIFIER_PROMPT.format(message=state["message"])
         )
         intent = extract_llm_text(response.content).strip().lower()
-        # Normalise — keep only valid values
         if intent not in ("question", "edit", "upload"):
-            intent = "question"  # default to RAG if unsure
+            intent = "question"
     except Exception:
         intent = "question"
 
     return {**state, "intent": intent}
 
 
+def route_after_classify(state: GraphState) -> str:
+    """Route after classify_intent node based on classified intent."""
+    return state.get("intent", "question")
+
+
+def run_upload(state: GraphState, db: Session) -> GraphState:
+    """Upload node — calls UploadAgent.ingest() with the pre-saved file path."""
+    file_path = state.get("file_path")
+    filename = state.get("filename", "document.pdf")
+
+    if not file_path:
+        return {
+            **state,
+            "result": {},
+            "error": "No file_path in state for upload operation.",
+        }
+    try:
+        # Read bytes from the already-saved file
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
+
+        agent = UploadAgent()
+        document = agent.ingest(
+            file_bytes=file_bytes,
+            filename=filename,
+            conversation_id=state["conversation_id"],
+            db=db,
+        )
+        return {
+            **state,
+            "result": {
+                "document_id": str(document.id),
+                "filename": document.filename,
+                "original_path": document.original_path,
+            },
+            "error": None,
+        }
+    except InvalidPDFError as exc:
+        return {**state, "result": {}, "error": str(exc)}
+    except Exception as exc:
+        return {**state, "result": {}, "error": f"Upload agent error: {exc}"}
+
+
 def run_rag(state: GraphState, db: Session) -> GraphState:
-    """Route to RAGAgent and store result."""
+    """RAG node — answers questions with page citations."""
     try:
         agent = RAGAgent()
         result = agent.answer(
@@ -64,7 +130,7 @@ def run_rag(state: GraphState, db: Session) -> GraphState:
 
 
 def run_edit(state: GraphState, db: Session) -> GraphState:
-    """Route to FileEditAgent and store result."""
+    """Edit node — applies natural-language PDF edits."""
     document_id = state.get("document_id")
     if not document_id:
         return {
@@ -96,51 +162,52 @@ def run_edit(state: GraphState, db: Session) -> GraphState:
         return {**state, "result": {}, "error": f"Edit agent error: {exc}"}
 
 
-def handle_upload(state: GraphState) -> GraphState:
-    """Upload is handled before graph invocation at the API layer.
-
-    This node just acknowledges and passes through.
-    """
-    return {
-        **state,
-        "result": {"message": "File upload is handled via the /documents endpoint."},
-        "error": None,
-    }
-
-
-def route_intent(state: GraphState) -> str:
-    """Conditional edge: return the next node name based on classified intent."""
-    return state.get("intent", "question")
-
-
 # ── Build the graph ───────────────────────────────────────────────────────────
 
 def build_orchestrator(db: Session) -> StateGraph:
-    """Build and compile the LangGraph StateGraph with the DB session bound to nodes."""
+    """Build and compile the LangGraph StateGraph.
 
+    Graph topology:
+        entry_router (conditional)
+            ├── "classify"  → classify_intent → route_after_classify
+            │                     ├── "question" → run_rag  → END
+            │                     ├── "edit"     → run_edit → END
+            │                     └── "upload"   → run_upload → END
+            ├── "question"  → run_rag    → END  (pre-set intent, skip classifier)
+            ├── "edit"      → run_edit   → END  (pre-set intent, skip classifier)
+            └── "upload"    → run_upload → END  (pre-set intent, skip classifier)
+    """
     graph = StateGraph(GraphState)
 
-    # Add nodes
+    # Add all nodes
     graph.add_node("classify_intent", classify_intent)
     graph.add_node("question", lambda s: run_rag(s, db))
     graph.add_node("edit", lambda s: run_edit(s, db))
-    graph.add_node("upload", handle_upload)
+    graph.add_node("upload", lambda s: run_upload(s, db))
 
-    # Entry point
-    graph.set_entry_point("classify_intent")
-
-    # Conditional routing after classification
-    graph.add_conditional_edges(
-        "classify_intent",
-        route_intent,
+    # Entry point: conditional router
+    graph.set_conditional_entry_point(
+        route_from_entry,
         {
-            "question": "question",
-            "edit": "edit",
-            "upload": "upload",
+            "classify":  "classify_intent",
+            "question":  "question",
+            "edit":      "edit",
+            "upload":    "upload",
         },
     )
 
-    # All agent nodes go to END
+    # After classifier: route to agent
+    graph.add_conditional_edges(
+        "classify_intent",
+        route_after_classify,
+        {
+            "question": "question",
+            "edit":     "edit",
+            "upload":   "upload",
+        },
+    )
+
+    # All agent nodes terminate
     graph.add_edge("question", END)
     graph.add_edge("edit", END)
     graph.add_edge("upload", END)
