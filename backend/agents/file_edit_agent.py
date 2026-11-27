@@ -160,21 +160,38 @@ class FileEditAgent:
     # ── PyMuPDF operations ────────────────────────────────────────────────────
 
     def _do_replace(self, pdf: pymupdf.Document, target: str, replacement: str) -> int:
-        """Replace all occurrences of target text with replacement on every page."""
+        """Replace all occurrences of target text with replacement on every page.
+
+        Uses redact-then-insert so original text is physically removed from
+        the PDF stream. Rects are stored before redaction is applied.
+        """
         total_found = 0
         for page in pdf:
             instances = page.search_for(target)
+            if not instances:
+                continue
             total_found += len(instances)
+
+            # Store (rect, fontsize, baseline_y) BEFORE applying redactions
+            insert_positions = []
             for rect in instances:
-                # Whiteout the original text
-                page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
-                # Insert replacement text at the same position
+                fontsize = max(7.0, round(rect.height * 0.80, 1))
+                baseline_y = rect.y0 + rect.height * 0.80
+                insert_positions.append((rect.x0, baseline_y, fontsize))
+                page.add_redact_annot(rect, fill=(1, 1, 1))
+
+            # Apply redactions (physically removes original text)
+            page.apply_redactions()
+
+            # Insert replacement at stored positions
+            for x0, baseline_y, fontsize in insert_positions:
                 page.insert_text(
-                    rect.tl,
+                    pymupdf.Point(x0, baseline_y),
                     replacement,
-                    fontsize=11,
+                    fontsize=fontsize,
                     color=(0, 0, 0),
                 )
+
         if total_found == 0:
             raise EditParseError(
                 f"Text '{target}' was not found in any page of the document. "
