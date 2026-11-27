@@ -79,12 +79,14 @@ def run_edit(state: GraphState, db: Session) -> GraphState:
             document_id=document_id,
             db=db,
         )
+        matches = doc.__dict__.get("_matches", 0)
         return {
             **state,
             "result": {
                 "document_id": str(doc.id),
                 "edited_path": doc.edited_path,
                 "filename": doc.filename,
+                "matches": matches,
             },
             "error": None,
         }

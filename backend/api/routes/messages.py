@@ -148,9 +148,11 @@ def send_message(
 
     if intent == "edit":
         filename = result.get("filename", "document")
+        matches = result.get("matches", 0)
         content = (
-            f"Done! I've applied your edit to '{filename}'. "
-            "You can download the edited version using the download endpoint."
+            f"✅ Done! Applied your edit to **'{filename}'** "
+            f"({matches} occurrence{'s' if matches != 1 else ''} changed). "
+            "Download the edited version below."
         )
         citations_json = None
     else:

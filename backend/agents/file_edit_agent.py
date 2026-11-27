@@ -77,13 +77,15 @@ class FileEditAgent:
         cmd = self._parse_instruction(instruction)
 
         # 3. Apply edit to a copy of the original PDF
-        edited_path = self._apply_edit(doc_row.original_path, document_id, cmd)
+        edited_path, matches = self._apply_edit(doc_row.original_path, document_id, cmd)
 
         # 4. Persist edited_path
         doc_row.edited_path = edited_path
         db.commit()
         db.refresh(doc_row)
 
+        # Attach match count to the doc object so the route can use it
+        doc_row.__dict__["_matches"] = matches
         return doc_row
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -130,17 +132,22 @@ class FileEditAgent:
 
         return cmd
 
-    def _apply_edit(self, original_path: str, document_id: str, cmd: dict) -> str:
-        """Open the original PDF, apply the edit, save to storage/edited/."""
+    def _apply_edit(self, original_path: str, document_id: str, cmd: dict) -> tuple[str, int]:
+        """Open the original PDF, apply the edit, save to storage/edited/.
+        
+        Returns:
+            Tuple of (edited_path, number_of_matches)
+        """
         pdf = pymupdf.open(original_path)
         operation = cmd["operation"]
+        matches = 0
 
         if operation == "replace":
-            self._do_replace(pdf, cmd["target"], cmd["replacement"])
+            matches = self._do_replace(pdf, cmd["target"], cmd["replacement"])
         elif operation == "redact":
-            self._do_redact(pdf, cmd["target"])
+            matches = self._do_redact(pdf, cmd["target"])
         elif operation == "remove_pages":
-            self._do_remove_pages(pdf, cmd["target"])
+            matches = self._do_remove_pages(pdf, cmd["target"])
 
         # Save edited copy
         edited_path = os.path.join(
@@ -148,35 +155,51 @@ class FileEditAgent:
         )
         pdf.save(edited_path)
         pdf.close()
-        return edited_path
+        return edited_path, matches
 
     # ── PyMuPDF operations ────────────────────────────────────────────────────
 
-    def _do_replace(self, pdf: pymupdf.Document, target: str, replacement: str) -> None:
+    def _do_replace(self, pdf: pymupdf.Document, target: str, replacement: str) -> int:
         """Replace all occurrences of target text with replacement on every page."""
+        total_found = 0
         for page in pdf:
             instances = page.search_for(target)
+            total_found += len(instances)
             for rect in instances:
                 # Whiteout the original text
                 page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
                 # Insert replacement text at the same position
                 page.insert_text(
-                    rect.tl,  # top-left of the found rect
+                    rect.tl,
                     replacement,
                     fontsize=11,
                     color=(0, 0, 0),
                 )
+        if total_found == 0:
+            raise EditParseError(
+                f"Text '{target}' was not found in any page of the document. "
+                "Check the exact spelling and try again."
+            )
+        return total_found
 
-    def _do_redact(self, pdf: pymupdf.Document, target: str) -> None:
+    def _do_redact(self, pdf: pymupdf.Document, target: str) -> int:
         """Black out all occurrences of target text using PyMuPDF redactions."""
+        total_found = 0
         for page in pdf:
             instances = page.search_for(target)
+            total_found += len(instances)
             for rect in instances:
                 page.add_redact_annot(rect, fill=(0, 0, 0))
             if instances:
                 page.apply_redactions()
+        if total_found == 0:
+            raise EditParseError(
+                f"Text '{target}' was not found in any page of the document. "
+                "Nothing was redacted."
+            )
+        return total_found
 
-    def _do_remove_pages(self, pdf: pymupdf.Document, target: str) -> None:
+    def _do_remove_pages(self, pdf: pymupdf.Document, target: str) -> int:
         """Remove the specified 1-indexed page numbers from the PDF."""
         try:
             # Parse "1,3,5" → [0, 2, 4] (0-indexed for PyMuPDF)
@@ -188,6 +211,7 @@ class FileEditAgent:
                     f"No valid pages to remove. Document has {pdf.page_count} pages."
                 )
             pdf.delete_pages(valid)
+            return len(valid)
         except ValueError as exc:
             raise EditParseError(
                 f"Could not parse page numbers from '{target}'. "
