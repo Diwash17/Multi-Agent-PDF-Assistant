@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 from datetime import datetime
@@ -12,7 +13,7 @@ from backend.agents.orchestrator import build_orchestrator
 from backend.core.config import settings
 from backend.core.exceptions import InvalidPDFError, DocumentNotFoundError, EditParseError
 from backend.core.state import GraphState
-from backend.db.models import Conversation, Document
+from backend.db.models import Conversation, Document, Message
 from backend.db.session import get_db
 
 router = APIRouter(prefix="/conversations", tags=["Documents"])
@@ -113,13 +114,32 @@ async def upload_document(
             raise HTTPException(status_code=400, detail=error)
         raise HTTPException(status_code=500, detail=error)
 
-    # 6. Fetch and return the created Document from DB
+    # 6. Save tool message — records orchestrator routing decision for upload
     result = final_state.get("result", {})
-    document_id = result.get("document_id")
-    if not document_id:
+    document_id_str = result.get("document_id")
+
+    tool_msg = Message(
+        conversation_id=conversation_id,
+        role="tool",
+        content=(
+            f"[orchestrator] Routed to UploadAgent — "
+            f"indexed '{result.get('filename', file.filename)}'"
+        ),
+        citations=json.dumps({
+            "agent": "UploadAgent",
+            "intent": "upload",
+            "document_id": document_id_str,
+            "filename": result.get("filename", file.filename),
+        }),
+    )
+    db.add(tool_msg)
+    db.commit()
+
+    # 7. Fetch and return the created Document from DB
+    if not document_id_str:
         raise HTTPException(status_code=500, detail="Upload succeeded but document ID not returned.")
 
-    document = db.query(Document).filter(Document.id == uuid.UUID(document_id)).first()
+    document = db.query(Document).filter(Document.id == uuid.UUID(document_id_str)).first()
     if not document:
         raise HTTPException(status_code=500, detail="Document created but not found in DB.")
 
