@@ -379,6 +379,7 @@ def init_state() -> None:
 
 def refresh_messages() -> None:
     """Fetch latest messages from API and update session state."""
+    if not st.session_state.conversation_id:
         return
     data = api("GET", f"/conversations/{st.session_state.conversation_id}/messages")
     if data is not None:
@@ -387,6 +388,7 @@ def refresh_messages() -> None:
 
 def refresh_documents() -> None:
     """Fetch latest documents from API and update session state."""
+    if not st.session_state.conversation_id:
         return
     data = api("GET", f"/conversations/{st.session_state.conversation_id}/documents")
     if data is not None:
@@ -592,16 +594,8 @@ def render_upload() -> None:
 # ── Chat tab ──────────────────────────────────────────────────────────────────
 
 def render_chat() -> None:
+    """Render the chat tab with message history and question input."""
     if not st.session_state.documents:
-        st.markdown(
-            """<div class="empty-state">
-                <div class="icon">📤</div>
-                <h3>Upload a PDF first</h3>
-                <p>Go to the <strong>Upload PDF</strong> tab and index a document before chatting.</p>
-            </div>""",
-            unsafe_allow_html=True,
-        )
-        return
         st.markdown(
             """<div class="empty-state">
                 <div class="icon">📤</div>
